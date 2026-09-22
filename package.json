@@ -1,0 +1,24 @@
+{
+  "name": "clyx-media-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch server.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@trpc/server": "^11.0.0-rc.353",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "zod": "^3.23.8",
+    "drizzle-orm": "^0.30.10",
+    "mysql2": "^3.9.7",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.9.0",
+    "typescript": "^5.4.5",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17"
+  }
+}
