@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: clyx-media-backend
+    runtime: node
+    region: singapore
+    plan: free
+    # --include=dev: TypeScript is a devDependency and is needed for the build step.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_BUCKET
+        value: site-images
+      - key: ADMIN_USERNAME
+        value: admin
+      # Secrets: paste the values in the Render dashboard (they are not stored in this file).
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # Your Vercel site, e.g. https://clyx-media.vercel.app (comma-separate several).
+      - key: CORS_ORIGIN
+        sync: false
