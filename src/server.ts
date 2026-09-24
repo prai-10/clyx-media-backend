@@ -4,7 +4,8 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { isAdminRequest } from './auth.js';
-import { getPublicContent } from './content.js';
+import { blockNames, collectionNames, type BlockName, type CollectionName } from './content-schema.js';
+import { getPublicPayload } from './content.js';
 import { db } from './db/client.js';
 import { media } from './db/schema.js';
 import { env } from './env.js';
@@ -16,6 +17,7 @@ const app = express();
 
 // Render sits behind a proxy; without this every visitor shares one IP for rate limiting.
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
 app.use(
   cors({
@@ -33,12 +35,32 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// "?blocks=hero&collections=team,stats" -> only the names this site knows. Without either parameter the
+// whole content is returned, so older cached copies of the website keep working.
+function parseScope(query: express.Request['query']) {
+  const names = <T extends string>(value: unknown, known: readonly T[]): T[] | undefined => {
+    if (typeof value !== 'string') return undefined;
+    return value
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is T => (known as readonly string[]).includes(s));
+  };
+  return { blocks: names<BlockName>(query.blocks, blockNames), collections: names<CollectionName>(query.collections, collectionNames) };
+}
+
 // Public read used by the website. Browsers must revalidate every time (cheap 304 via ETag),
-// so an admin edit is visible on the very next page load.
-app.get('/api/public/content', async (_req, res) => {
+// so an admin edit is visible on the very next page load. The body is built and gzipped once and reused.
+app.get('/api/public/content', async (req, res) => {
   try {
-    res.set('Cache-Control', 'no-cache');
-    res.json(await getPublicContent());
+    const payload = await getPublicPayload(parseScope(req.query));
+    res.set({ 'Cache-Control': 'no-cache', ETag: payload.etag, 'Content-Type': 'application/json; charset=utf-8' });
+    res.vary('Accept-Encoding');
+    if (req.fresh) return res.status(304).end();
+    if (payload.gzip && req.acceptsEncodings('gzip') === 'gzip') {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(payload.gzip);
+    }
+    res.send(payload.body);
   } catch (err) {
     console.error('public content failed', err);
     res.status(500).json({ error: 'Could not load content' });
@@ -104,4 +126,6 @@ ensureBucket().catch((e) => console.error('Storage bucket check failed:', e.mess
 
 app.listen(env.port, () => {
   console.log(`Backend server running on port ${env.port}`);
+  // Load content and open the database connection now, so the first visitor after a (re)start is not the one who waits.
+  getPublicPayload().catch((e) => console.error('Content warm-up failed:', e.message));
 });

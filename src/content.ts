@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import { TRPCError } from '@trpc/server';
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from './db/client.js';
@@ -29,30 +32,119 @@ async function loadRows() {
   return { blocks, itemRows };
 }
 
+type PublicContent = { blocks: Record<string, Fields>; collections: Record<CollectionName, Fields[]> };
+
+/** Which parts of the site content a page needs. Leaving both out means everything. */
+export type PublicScope = { blocks?: readonly BlockName[]; collections?: readonly CollectionName[] };
+
+/** A ready-to-send response body: serialized once, compressed once, shared by every visitor. */
+export type PublicPayload = { body: string; etag: string; gzip: Buffer | null };
+
+const gzipAsync = promisify(gzip);
+// Below this a gzip header costs more than it saves.
+const GZIP_MIN_BYTES = 1024;
+// A page only ever asks for a handful of combinations; this caps memory if someone sends random ones.
+const MAX_CACHED_SCOPES = 64;
+
 // Visitors hit this on every page load, so the built response is kept in memory. Every write below clears it,
 // and the short TTL covers writes made by another server instance.
 const PUBLIC_CACHE_TTL_MS = 60_000;
-let publicCache: { value: Awaited<ReturnType<typeof buildPublicContent>>; at: number } | null = null;
+type PublicSnapshot = { value: PublicContent; at: number; payloads: Map<string, Promise<PublicPayload>> };
+let publicSnapshot: PublicSnapshot | null = null;
+let publicBuild: Promise<PublicSnapshot> | null = null;
+// Bumped by every write so a build that started before the write cannot put stale content back in the cache.
+let publicGeneration = 0;
+
 const invalidatePublicCache = () => {
-  publicCache = null;
+  publicGeneration++;
+  publicSnapshot = null;
+  publicBuild = null;
 };
 
-async function buildPublicContent() {
-  const { blocks, itemRows } = await loadRows();
+async function buildPublicContent(): Promise<PublicContent> {
+  // Hidden cards are filtered in SQL and only the columns the site renders are read.
+  const [blockRows, itemRows] = await Promise.all([
+    db.select().from(siteBlocks),
+    db
+      .select({ id: contentItems.id, collection: contentItems.collection, data: contentItems.data })
+      .from(contentItems)
+      .where(eq(contentItems.isHidden, false))
+      .orderBy(asc(contentItems.sortOrder), asc(contentItems.createdAt)),
+  ]);
+  const blocks: Record<string, Fields> = {};
+  for (const row of blockRows) blocks[row.key] = row.value;
   const collections = emptyCollections<Fields>();
   for (const row of itemRows) {
-    if (row.isHidden || !(row.collection in collections)) continue;
+    if (!(row.collection in collections)) continue;
     collections[row.collection as CollectionName].push({ id: row.id, ...row.data });
   }
   return { blocks, collections };
 }
 
-/** What the public website renders: hidden cards are left out and each card is `{ id, ...fields }`. */
-export async function getPublicContent() {
-  if (publicCache && Date.now() - publicCache.at < PUBLIC_CACHE_TTL_MS) return publicCache.value;
-  const value = await buildPublicContent();
-  publicCache = { value, at: Date.now() };
-  return value;
+/** One database read no matter how many visitors arrive while it is running. */
+function loadPublicSnapshot(): Promise<PublicSnapshot> {
+  if (publicBuild) return publicBuild;
+  const generation = publicGeneration;
+  const build: Promise<PublicSnapshot> = buildPublicContent()
+    .then((value) => {
+      const snapshot: PublicSnapshot = { value, at: Date.now(), payloads: new Map() };
+      if (generation === publicGeneration) publicSnapshot = snapshot;
+      return snapshot;
+    })
+    .finally(() => {
+      if (publicBuild === build) publicBuild = null;
+    });
+  publicBuild = build;
+  return build;
+}
+
+async function getPublicSnapshot(): Promise<PublicSnapshot> {
+  if (!publicSnapshot) return loadPublicSnapshot();
+  // Past the TTL the old copy is still served instantly while a fresh one is loaded in the background,
+  // so no visitor waits on the database once the cache is warm.
+  if (Date.now() - publicSnapshot.at >= PUBLIC_CACHE_TTL_MS) {
+    loadPublicSnapshot().catch((err) => console.error('public content refresh failed', err));
+  }
+  return publicSnapshot;
+}
+
+function scopeKey(scope: PublicScope) {
+  const blocks = [...new Set(scope.blocks ?? [])].sort();
+  const collections = [...new Set(scope.collections ?? [])].sort();
+  return scope.blocks || scope.collections ? `b=${blocks.join(',')}&c=${collections.join(',')}` : 'all';
+}
+
+function pickPublicContent(content: PublicContent, scope: PublicScope): Partial<PublicContent> {
+  if (!scope.blocks && !scope.collections) return content;
+  const blocks: Record<string, Fields> = {};
+  for (const key of scope.blocks ?? []) if (key in content.blocks) blocks[key] = content.blocks[key];
+  const collections = {} as Record<CollectionName, Fields[]>;
+  for (const name of scope.collections ?? []) collections[name] = content.collections[name];
+  return { blocks, collections };
+}
+
+async function buildPublicPayload(content: PublicContent, scope: PublicScope): Promise<PublicPayload> {
+  const body = JSON.stringify(pickPublicContent(content, scope));
+  const etag = `W/"${createHash('sha1').update(body).digest('base64url').slice(0, 22)}"`;
+  const gzipped = body.length >= GZIP_MIN_BYTES ? await gzipAsync(body, { level: 9 }) : null;
+  return { body, etag, gzip: gzipped };
+}
+
+/**
+ * What the public website renders, limited to what the requesting page shows: hidden cards are left out and
+ * each card is `{ id, ...fields }`. The serialized and gzipped bytes are cached per combination.
+ */
+export async function getPublicPayload(scope: PublicScope = {}): Promise<PublicPayload> {
+  const snapshot = await getPublicSnapshot();
+  const key = scopeKey(scope);
+  let payload = snapshot.payloads.get(key);
+  if (!payload) {
+    if (snapshot.payloads.size >= MAX_CACHED_SCOPES) snapshot.payloads.clear();
+    payload = buildPublicPayload(snapshot.value, scope);
+    snapshot.payloads.set(key, payload);
+    payload.catch(() => snapshot.payloads.delete(key));
+  }
+  return payload;
 }
 
 /** What the admin panel edits: everything, including hidden cards, with fields kept under `data`. */
