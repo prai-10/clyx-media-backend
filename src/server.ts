@@ -3,12 +3,14 @@ import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
+import { z } from 'zod';
 import { isAdminRequest } from './auth.js';
 import { blockNames, collectionNames, type BlockName, type CollectionName } from './content-schema.js';
-import { getPublicPayload } from './content.js';
+import { getPublicPayload, seedNewCollections } from './content.js';
 import { db } from './db/client.js';
 import { media } from './db/schema.js';
 import { env } from './env.js';
+import { mailerReady, MAX_RESUME_BYTES, sendApplicationEmail, sniffResumeType } from './mailer.js';
 import { appRouter } from './routers.js';
 import { ensureBucket, MAX_UPLOAD_BYTES, removeImage, sniffImageType, uploadImage } from './storage.js';
 import { createContext } from './trpc.js';
@@ -122,10 +124,70 @@ app.post('/api/admin/upload', async (req, res) => {
   });
 });
 
+// Careers apply form: the resume is emailed straight to HR and not stored anywhere.
+const applyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many applications from this network. Please try again in an hour.' },
+});
+
+const resumeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RESUME_BYTES, files: 1, fields: 10, fieldSize: 4000 },
+});
+
+const applicationSchema = z.object({
+  name: z.string().trim().min(2, 'Please enter your full name.').max(120),
+  email: z.string().trim().email('Please enter a valid email.').max(200),
+  phone: z.string().trim().max(40).optional().default(''),
+  role: z.string().trim().min(2, 'Please choose a role.').max(120),
+  note: z.string().trim().max(2000).optional().default(''),
+  // Honeypot: hidden from people, filled in by bots.
+  website: z.string().max(500).optional(),
+});
+
+app.post('/api/public/apply', applyLimiter, (req, res) => {
+  if (!mailerReady()) {
+    console.error('Apply form used but RESEND_API_KEY is not set.');
+    return res.status(503).json({ error: 'Applications are not open online right now. Please email hr@clyxmedia.com.' });
+  }
+
+  resumeUpload.single('resume')(req, res, async (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? 'Resume is larger than 5 MB.' : 'Could not read the form.';
+      return res.status(400).json({ error: message });
+    }
+    if (err) return res.status(400).json({ error: 'Upload failed.' });
+
+    const parsed = applicationSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Please check the form.' });
+    // Pretend success so bots learn nothing.
+    if (parsed.data.website) return res.json({ ok: true });
+
+    if (!req.file) return res.status(400).json({ error: 'Please attach your resume.' });
+    const ext = sniffResumeType(req.file.buffer, req.file.originalname);
+    if (!ext) return res.status(400).json({ error: 'Resume must be a PDF, DOC or DOCX file.' });
+
+    try {
+      await sendApplicationEmail(parsed.data, { buffer: req.file.buffer, ext });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('application email failed', e);
+      res.status(502).json({ error: 'Could not send your application. Please try again or email hr@clyxmedia.com.' });
+    }
+  });
+});
+
 ensureBucket().catch((e) => console.error('Storage bucket check failed:', e.message));
 
 app.listen(env.port, () => {
   console.log(`Backend server running on port ${env.port}`);
-  // Load content and open the database connection now, so the first visitor after a (re)start is not the one who waits.
-  getPublicPayload().catch((e) => console.error('Content warm-up failed:', e.message));
+  // Fill lists added since launch, then load content and open the database connection now,
+  // so the first visitor after a (re)start is not the one who waits.
+  seedNewCollections()
+    .then((seeded) => seeded.length && console.log(`Seeded new lists: ${seeded.join(', ')}`))
+    .catch((e) => console.error('Seeding new lists failed:', e.message))
+    .finally(() => getPublicPayload().catch((e) => console.error('Content warm-up failed:', e.message)));
 });

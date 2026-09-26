@@ -6,8 +6,10 @@ import type { BlockName, CollectionName } from './content-schema.js';
  */
 const u = (id: string, w = 1000) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=85`;
 
-export const seedBlocks: Record<BlockName, Record<string, unknown>> = {
+// Page blocks are left out: until the admin saves a page, the website shows its built-in copy.
+export const seedBlocks: Partial<Record<BlockName, Record<string, unknown>>> = {
   hero: {
+    eyebrow: 'Performance marketing • Creator ads • Web',
     headline: 'We turn organic clips into scaled accounts.',
     sub: 'CLYX Media runs the creator whitelisting + performance engine behind brands that sell — Meta & Google ads, content, branding, and websites built for one job: conversion.',
   },
@@ -26,6 +28,7 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     { client: 'MUTHA BEAUTY', category: 'CULTURE FIRST', roas: '10M+ IMPRESSIONS', spend: '', status: 'Scaling', desc: 'Editorial and high-aesthetic brand storytelling engineered to convert on TikTok & Reels.', img: u('photo-1515886657613-9f3515b0c78f'), ctaText: 'View Case Study', ctaUrl: '/case-studies' },
     { client: 'ORBIT LABS', category: 'CONVERSION TECH', roas: '+28% CVR LIFT', spend: '', status: 'Scaling', desc: 'Custom headless storefronts tuned for 0.4s load times and lightning checkout flows.', img: u('photo-1496747611176-843222e1e57c'), ctaText: 'View Case Study', ctaUrl: '/case-studies' },
     { client: 'HALO D2C', category: 'UGC ENGINE', roas: '4.1X BLENDED ROAS', spend: '', status: 'Scaling', desc: 'Built and managed a dedicated roster of 120+ micro-creators producing genuine hooks.', img: u('photo-1483985988355-763728e1935b'), ctaText: 'View Case Study', ctaUrl: '/case-studies' },
+    { client: 'LUMEN WEAR', category: 'BRAND LAUNCH', roas: '2.8X FIRST-MONTH ROAS', spend: '', status: 'Scaling', desc: 'Launched a fashion label from zero with creator-led drops and full-funnel Meta ads.', img: u('photo-1529139574466-a303027c1d8b'), ctaText: 'View Case Study', ctaUrl: '/case-studies' },
   ],
   caseStudies: [
     { brand: 'Kulture Skin', category: 'Beauty / Creator commerce', headline: 'From organic proof to paid growth.', result: '3.4x ROAS', detail: 'A creator-led testing system that found the hooks worth scaling, then turned them into a repeatable paid engine.', image: u('photo-1522337360788-8b13dee7a37e', 1400), accent: '#FFDE59' },
@@ -70,4 +73,12 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     'photo-1506794778202-cad84cf45f1d',
     'photo-1492562080023-ab3db95bfbce',
   ].map((id, i) => ({ name: `Creator ${String(i + 1).padStart(2, '0')}`, handle: '', platform: '', reach: '', image: u(id, 800) })),
+  portfolio: [
+    { title: 'Kulture Skin', category: 'Beauty', result: '3.4x ROAS', image: u('photo-1522337360788-8b13dee7a37e') },
+    { title: 'Nova Nutrition', category: 'Food', result: '42% lower CPA', image: u('photo-1541643600914-78b084683601') },
+    { title: 'Mutha Beauty', category: 'Fashion', result: '10M+ impressions', image: u('photo-1515886657613-9f3515b0c78f') },
+    { title: 'Orbit Labs', category: 'Tech', result: '+28% CVR lift', image: u('photo-1460925895917-afdab827c52f') },
+    { title: 'Halo Goods', category: 'D2C', result: '4.1x blended ROAS', image: u('photo-1496747611176-843222e1e57c') },
+    { title: 'Aura Collective', category: 'Fashion', result: '+188% CTR', image: u('photo-1483985988355-763728e1935b') },
+  ],
 };

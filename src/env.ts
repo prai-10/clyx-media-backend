@@ -15,6 +15,10 @@ export const env = {
   adminPassword: required('ADMIN_PASSWORD'),
   jwtSecret: required('JWT_SECRET'),
   port: Number(process.env.PORT) || 3000,
+  // Careers applications. Without RESEND_API_KEY the apply form reports that applications are closed.
+  resendApiKey: process.env.RESEND_API_KEY ?? '',
+  mailFrom: process.env.MAIL_FROM || 'Clyx Careers <careers@clyxmedia.com>',
+  careersTo: process.env.CAREERS_TO_EMAIL || 'HR Clyx <hr@clyxmedia.com>',
   corsOrigins: (process.env.CORS_ORIGIN ?? '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))

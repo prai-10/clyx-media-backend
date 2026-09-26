@@ -2,7 +2,7 @@
 // Usage: npm run db:setup            (safe to re-run; never overwrites existing content)
 //        npm run db:setup -- --reseed (WIPES all content and re-seeds)
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { seedIfEmpty } from '../src/content.js';
+import { seedIfEmpty, seedNewCollections } from '../src/content.js';
 import { db, pool } from '../src/db/client.js';
 import { ensureBucket } from '../src/storage.js';
 
@@ -14,6 +14,8 @@ try {
 
   const result = await seedIfEmpty({ force: process.argv.includes('--reseed') });
   console.log(result.seeded ? 'Seeded launch content.' : 'Content already present, seed skipped.');
+  const added = await seedNewCollections();
+  if (added.length) console.log(`Seeded new lists: ${added.join(', ')}`);
 } finally {
   await pool.end();
 }

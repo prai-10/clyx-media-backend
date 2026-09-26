@@ -22,13 +22,19 @@ function emptyCollections<T>(): Record<CollectionName, T[]> {
   return Object.fromEntries(collectionNames.map((name) => [name, [] as T[]])) as Record<CollectionName, T[]>;
 }
 
+// Bookkeeping rows in site_blocks (e.g. "_seeded_portfolio") are never sent to the website or the admin panel.
+const SEEDED_PREFIX = '_seeded_';
+const isInternalBlock = (key: string) => key.startsWith('_');
+// Lists that did not exist at launch. Only these are ever filled by seedNewCollections.
+const LATE_COLLECTIONS: readonly CollectionName[] = ['portfolio'];
+
 async function loadRows() {
   const [blockRows, itemRows] = await Promise.all([
     db.select().from(siteBlocks),
     db.select().from(contentItems).orderBy(asc(contentItems.sortOrder), asc(contentItems.createdAt)),
   ]);
   const blocks: Record<string, Fields> = {};
-  for (const row of blockRows) blocks[row.key] = row.value;
+  for (const row of blockRows) if (!isInternalBlock(row.key)) blocks[row.key] = row.value;
   return { blocks, itemRows };
 }
 
@@ -72,7 +78,7 @@ async function buildPublicContent(): Promise<PublicContent> {
       .orderBy(asc(contentItems.sortOrder), asc(contentItems.createdAt)),
   ]);
   const blocks: Record<string, Fields> = {};
-  for (const row of blockRows) blocks[row.key] = row.value;
+  for (const row of blockRows) if (!isInternalBlock(row.key)) blocks[row.key] = row.value;
   const collections = emptyCollections<Fields>();
   for (const row of itemRows) {
     if (!(row.collection in collections)) continue;
@@ -256,7 +262,8 @@ export async function seedIfEmpty({ force = false } = {}) {
       await tx.delete(siteBlocks);
     }
     for (const key of blockNames) {
-      await tx.insert(siteBlocks).values({ key, value: parseFields(blockSchemas[key], seedBlocks[key]) });
+      const seed = seedBlocks[key];
+      if (seed) await tx.insert(siteBlocks).values({ key, value: parseFields(blockSchemas[key], seed) });
     }
     for (const collection of collectionNames) {
       const rows = seedCollections[collection].map((fields, sortOrder) => ({
@@ -265,8 +272,42 @@ export async function seedIfEmpty({ force = false } = {}) {
         sortOrder,
       }));
       if (rows.length) await tx.insert(contentItems).values(rows);
+      await tx.insert(siteBlocks).values({ key: `${SEEDED_PREFIX}${collection}`, value: {} }).onConflictDoNothing();
     }
   });
   invalidatePublicCache();
   return { seeded: true };
+}
+
+/**
+ * Lists added after launch (e.g. portfolio) start out empty in an existing database. This fills each one with its
+ * launch content exactly once; afterwards an empty list means the admin emptied it, and it stays empty.
+ */
+export async function seedNewCollections() {
+  const done = new Set(
+    (await db.select({ key: siteBlocks.key }).from(siteBlocks)).map((row) => row.key).filter((key) => key.startsWith(SEEDED_PREFIX)),
+  );
+  const seeded: CollectionName[] = [];
+  for (const collection of LATE_COLLECTIONS) {
+    const marker = `${SEEDED_PREFIX}${collection}`;
+    if (done.has(marker)) continue;
+    await db.transaction(async (tx) => {
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(contentItems)
+        .where(eq(contentItems.collection, collection));
+      if (count === 0) {
+        const rows = seedCollections[collection].map((fields, sortOrder) => ({
+          collection,
+          data: parseFields(collectionSchemas[collection], fields),
+          sortOrder,
+        }));
+        if (rows.length) await tx.insert(contentItems).values(rows);
+        seeded.push(collection);
+      }
+      await tx.insert(siteBlocks).values({ key: marker, value: {} }).onConflictDoNothing();
+    });
+  }
+  if (seeded.length) invalidatePublicCache();
+  return seeded;
 }

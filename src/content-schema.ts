@@ -86,18 +86,63 @@ export const collectionSchemas = {
     label: text(120),
     detail: text(200),
   }),
+  portfolio: z.object({
+    title: required(120),
+    category: text(40),
+    result: text(80),
+    image: imageUrl,
+  }),
 } as const;
 
 export type CollectionName = keyof typeof collectionSchemas;
 export const collectionNames = Object.keys(collectionSchemas) as CollectionName[];
 export const collectionEnum = z.enum(collectionNames as [CollectionName, ...CollectionName[]]);
 
+// Editable copy for one website page: flat `fieldKey -> text`. Keys ending in "Image" must be image URLs,
+// keys ending in "Url" must be safe links and keys ending in "Links" hold one "Label | link" per line with every
+// link checked, so a stored value can never turn into a javascript: URL.
+const pageFields = z
+  .record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,63}$/, 'Invalid field name'), z.string().trim().max(5000))
+  .superRefine((fields, ctx) => {
+    const keys = Object.keys(fields);
+    if (keys.length > 400) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Too many fields' });
+    for (const key of keys) {
+      if (key.endsWith('Links')) {
+        for (const [i, line] of fields[key].split('\n').entries()) {
+          const bar = line.indexOf('|');
+          if (!line.trim() || bar === -1) continue;
+          const result = linkUrl.safeParse(line.slice(bar + 1));
+          if (!result.success) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `Line ${i + 1}: ${result.error.issues[0].message}` });
+          }
+        }
+        continue;
+      }
+      const schema = key.endsWith('Image') ? imageUrl : key.endsWith('Url') ? linkUrl : null;
+      const result = schema?.safeParse(fields[key]);
+      if (result && !result.success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: result.error.issues[0].message });
+      }
+    }
+  });
+
+/**
+ * The website pages whose copy the admin panel edits, stored as blocks named `page_<name>`.
+ * "global" is the header, footer and other parts shared by every page.
+ */
+export const pageNames = ['global', 'home', 'about', 'services', 'portfolio', 'caseStudies', 'creators', 'blog', 'careers', 'contact'] as const;
+
 /** Singleton blocks (one record each). */
 export const blockSchemas = {
   hero: z.object({
+    eyebrow: text(200),
     headline: text(200),
     sub: text(500),
   }),
+  ...(Object.fromEntries(pageNames.map((name) => [`page_${name}`, pageFields])) as Record<
+    `page_${(typeof pageNames)[number]}`,
+    typeof pageFields
+  >),
 } as const;
 
 export type BlockName = keyof typeof blockSchemas;

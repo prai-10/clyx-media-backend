@@ -28,3 +28,10 @@ services:
       # Your Vercel site, e.g. https://clyx-media.vercel.app (comma-separate several).
       - key: CORS_ORIGIN
         sync: false
+      # Careers apply form: Resend API key (clyxmedia.com must be verified in Resend).
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        value: Clyx Careers <careers@clyxmedia.com>
+      - key: CAREERS_TO_EMAIL
+        value: HR Clyx <hr@clyxmedia.com>
