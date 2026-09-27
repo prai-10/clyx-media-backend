@@ -68,6 +68,8 @@ export const collectionSchemas = {
     date: text(30),
     readTime: text(30),
     style: z.enum(['yellow', 'blue', 'soft']).default('yellow'),
+    excerpt: text(600),
+    body: text(30000),
   }),
   careers: z.object({
     title: required(160),
