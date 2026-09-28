@@ -10,7 +10,7 @@ import { getPublicPayload, seedNewCollections } from './content.js';
 import { db } from './db/client.js';
 import { media } from './db/schema.js';
 import { env } from './env.js';
-import { mailerReady, MAX_RESUME_BYTES, sendApplicationEmail, sniffResumeType } from './mailer.js';
+import { mailerReady, MAX_RESUME_BYTES, sendApplicationEmail, sendContactEmail, sniffResumeType } from './mailer.js';
 import { appRouter } from './routers.js';
 import { ensureBucket, MAX_UPLOAD_BYTES, removeImage, sniffImageType, uploadImage } from './storage.js';
 import { createContext } from './trpc.js';
@@ -178,6 +178,43 @@ app.post('/api/public/apply', applyLimiter, (req, res) => {
       res.status(502).json({ error: 'Could not send your application. Please try again or email hr@clyxmedia.com.' });
     }
   });
+});
+
+// Contact page enquiry form: emailed to CONTACT_TO_EMAIL, not stored.
+const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many messages from this network. Please try again in an hour.' },
+});
+
+const enquirySchema = z.object({
+  name: z.string().trim().min(2, 'Please enter your name.').max(120),
+  email: z.string().trim().email('Please enter a valid email.').max(200),
+  company: z.string().trim().max(200).optional().default(''),
+  message: z.string().trim().min(5, 'Please tell us a little more.').max(5000),
+  // Honeypot: hidden from people, filled in by bots.
+  website: z.string().max(500).optional(),
+});
+
+app.post('/api/public/contact', contactLimiter, express.json({ limit: '20kb' }), async (req, res) => {
+  if (!mailerReady()) {
+    console.error('Contact form used but RESEND_API_KEY is not set.');
+    return res.status(503).json({ error: 'The form is not available right now. Please email work@clyxmedia.com.' });
+  }
+  const parsed = enquirySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Please check the form.' });
+  // Pretend success so bots learn nothing.
+  if (parsed.data.website) return res.json({ ok: true });
+
+  try {
+    await sendContactEmail(parsed.data);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('contact email failed', e);
+    res.status(502).json({ error: 'Could not send your message. Please try again or email work@clyxmedia.com.' });
+  }
 });
 
 ensureBucket().catch((e) => console.error('Storage bucket check failed:', e.message));

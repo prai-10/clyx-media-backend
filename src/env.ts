@@ -19,6 +19,9 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY ?? '',
   mailFrom: process.env.MAIL_FROM || 'Clyx Careers <careers@clyxmedia.com>',
   careersTo: process.env.CAREERS_TO_EMAIL || 'HR Clyx <hr@clyxmedia.com>',
+  // Contact page enquiries (same Resend key).
+  contactFrom: process.env.CONTACT_FROM || 'Clyx Website <website@clyxmedia.com>',
+  contactTo: process.env.CONTACT_TO_EMAIL || 'Clyx <work@clyxmedia.com>',
   corsOrigins: (process.env.CORS_ORIGIN ?? '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))

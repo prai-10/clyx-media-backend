@@ -35,3 +35,6 @@ services:
         value: Clyx Careers <careers@clyxmedia.com>
       - key: CAREERS_TO_EMAIL
         value: HR Clyx <hr@clyxmedia.com>
+      # Contact page enquiry form.
+      - key: CONTACT_TO_EMAIL
+        value: Clyx <work@clyxmedia.com>

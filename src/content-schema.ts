@@ -75,6 +75,7 @@ export const collectionSchemas = {
     title: required(160),
     type: text(80),
     detail: text(400),
+    description: text(8000),
   }),
   creators: z.object({
     name: text(120),

@@ -62,3 +62,37 @@ export async function sendApplicationEmail(app: Application, resume: { buffer: B
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
 }
+
+export type Enquiry = { name: string; email: string; company?: string; message: string };
+
+export async function sendContactEmail(q: Enquiry) {
+  const rows: [string, string][] = [
+    ['Name', q.name],
+    ['Email', q.email],
+    ['Company', q.company || '—'],
+    ['Message', q.message],
+  ];
+
+  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#101010">
+  <h2 style="margin:0 0 16px;color:#013AA3">New enquiry from ${escapeHtml(q.name)}</h2>
+  <table cellpadding="8" style="border-collapse:collapse">${rows
+    .map(([k, v]) => `<tr><td style="color:#666;vertical-align:top">${k}</td><td style="white-space:pre-wrap">${escapeHtml(v)}</td></tr>`)
+    .join('')}</table>
+  <p style="color:#666;margin-top:16px">Sent from the contact form on clyxmedia.com. Reply to this email to reach them.</p>
+</div>`;
+  const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: env.contactFrom,
+      to: [env.contactTo],
+      reply_to: q.email,
+      subject: `Enquiry: ${q.name}${q.company ? ` (${q.company})` : ''}`,
+      html,
+      text,
+    }),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
+}
