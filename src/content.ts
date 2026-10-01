@@ -40,8 +40,15 @@ async function loadRows() {
 
 type PublicContent = { blocks: Record<string, Fields>; collections: Record<CollectionName, Fields[]> };
 
-/** Which parts of the site content a page needs. Leaving both out means everything. */
-export type PublicScope = { blocks?: readonly BlockName[]; collections?: readonly CollectionName[] };
+/**
+ * Which parts of the site content a page needs. Leaving both lists out means everything.
+ * `fields` narrows a collection's cards to the fields that page renders (`id` is always kept).
+ */
+export type PublicScope = {
+  blocks?: readonly BlockName[];
+  collections?: readonly CollectionName[];
+  fields?: Partial<Record<CollectionName, readonly string[]>>;
+};
 
 /** A ready-to-send response body: serialized once, compressed once, shared by every visitor. */
 export type PublicPayload = { body: string; etag: string; gzip: Buffer | null };
@@ -114,10 +121,23 @@ async function getPublicSnapshot(): Promise<PublicSnapshot> {
   return publicSnapshot;
 }
 
+const sortedUnique = (list: readonly string[] | undefined) => [...new Set(list ?? [])].sort();
+
 function scopeKey(scope: PublicScope) {
-  const blocks = [...new Set(scope.blocks ?? [])].sort();
-  const collections = [...new Set(scope.collections ?? [])].sort();
-  return scope.blocks || scope.collections ? `b=${blocks.join(',')}&c=${collections.join(',')}` : 'all';
+  if (!scope.blocks && !scope.collections) return 'all';
+  const fields = Object.entries(scope.fields ?? {})
+    .map(([name, list]) => `${name}:${sortedUnique(list).join('.')}`)
+    .sort();
+  return `b=${sortedUnique(scope.blocks).join(',')}&c=${sortedUnique(scope.collections).join(',')}&f=${fields.join(';')}`;
+}
+
+/** Only the listed fields of each card, plus its id. */
+function pickFields(items: Fields[], fields: readonly string[]): Fields[] {
+  return items.map((item) => {
+    const out: Fields = { id: item.id };
+    for (const key of fields) if (key in item) out[key] = item[key];
+    return out;
+  });
 }
 
 function pickPublicContent(content: PublicContent, scope: PublicScope): Partial<PublicContent> {
@@ -125,7 +145,10 @@ function pickPublicContent(content: PublicContent, scope: PublicScope): Partial<
   const blocks: Record<string, Fields> = {};
   for (const key of scope.blocks ?? []) if (key in content.blocks) blocks[key] = content.blocks[key];
   const collections = {} as Record<CollectionName, Fields[]>;
-  for (const name of scope.collections ?? []) collections[name] = content.collections[name];
+  for (const name of scope.collections ?? []) {
+    const fields = scope.fields?.[name];
+    collections[name] = fields ? pickFields(content.collections[name], fields) : content.collections[name];
+  }
   return { blocks, collections };
 }
 

@@ -6,7 +6,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { isAdminRequest } from './auth.js';
 import { blockNames, collectionNames, type BlockName, type CollectionName } from './content-schema.js';
-import { getPublicPayload, seedNewCollections } from './content.js';
+import { getPublicPayload, seedNewCollections, type PublicScope } from './content.js';
 import { db } from './db/client.js';
 import { media } from './db/schema.js';
 import { env } from './env.js';
@@ -37,9 +37,12 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// "?blocks=hero&collections=team,stats" -> only the names this site knows. Without either parameter the
-// whole content is returned, so older cached copies of the website keep working.
-function parseScope(query: express.Request['query']) {
+// "?blocks=hero&collections=team,stats&fields[team]=name,role" -> only the names this site knows. Without
+// blocks/collections the whole content is returned, so older cached copies of the website keep working.
+const FIELD_NAME = /^[a-zA-Z][a-zA-Z0-9]{0,63}$/;
+const MAX_FIELDS = 30;
+
+function parseScope(query: express.Request['query']): PublicScope {
   const names = <T extends string>(value: unknown, known: readonly T[]): T[] | undefined => {
     if (typeof value !== 'string') return undefined;
     return value
@@ -47,7 +50,23 @@ function parseScope(query: express.Request['query']) {
       .map((s) => s.trim())
       .filter((s): s is T => (known as readonly string[]).includes(s));
   };
-  return { blocks: names<BlockName>(query.blocks, blockNames), collections: names<CollectionName>(query.collections, collectionNames) };
+  const collections = names<CollectionName>(query.collections, collectionNames);
+  // fields[<collection>]=a,b,c, only for collections that were asked for.
+  const fields: NonNullable<PublicScope['fields']> = {};
+  const rawFields = query.fields;
+  if (collections && rawFields && typeof rawFields === 'object' && !Array.isArray(rawFields)) {
+    for (const name of collections) {
+      const value = (rawFields as Record<string, unknown>)[name];
+      if (typeof value !== 'string') continue;
+      const list = value
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => FIELD_NAME.test(s))
+        .slice(0, MAX_FIELDS);
+      if (list.length) fields[name] = list;
+    }
+  }
+  return { blocks: names<BlockName>(query.blocks, blockNames), collections, fields };
 }
 
 // Public read used by the website. Browsers must revalidate every time (cheap 304 via ETag),
