@@ -26,6 +26,27 @@ export const mailerReady = () => Boolean(env.resendApiKey);
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 
+async function sendMail(payload: Record<string, unknown>) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
+}
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || 'there';
+
+/** Short note to a visitor: plain-text paragraphs in, matching html + text out. */
+function visitorNote(paragraphs: string[]) {
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#101010;max-width:560px">
+${paragraphs.map((p) => `  <p>${escapeHtml(p)}</p>`).join('\n')}
+  <p style="margin-top:24px">— Team CLYX Media<br><a href="https://clyxmedia.com" style="color:#013AA3">clyxmedia.com</a></p>
+</div>`;
+  const text = [...paragraphs, '— Team CLYX Media\nhttps://clyxmedia.com'].join('\n\n');
+  return { html, text };
+}
+
 export type Application = { name: string; email: string; phone?: string; role: string; note?: string };
 
 export async function sendApplicationEmail(app: Application, resume: { buffer: Buffer; ext: keyof typeof RESUME_TYPES }) {
@@ -47,20 +68,30 @@ export async function sendApplicationEmail(app: Application, resume: { buffer: B
 </div>`;
   const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nResume attached.';
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: env.mailFrom,
-      to: [env.careersTo],
-      reply_to: app.email,
-      subject: `Application: ${app.role} — ${app.name}`,
-      html,
-      text,
-      attachments: [{ filename: `Resume-${safeName}.${resume.ext}`, content: resume.buffer.toString('base64') }],
-    }),
+  await sendMail({
+    from: env.mailFrom,
+    to: [env.careersTo],
+    reply_to: app.email,
+    subject: `Application: ${app.role} — ${app.name}`,
+    html,
+    text,
+    attachments: [{ filename: `Resume-${safeName}.${resume.ext}`, content: resume.buffer.toString('base64') }],
   });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
+
+  // Confirmation to the candidate comes from the HR inbox itself, so their reply lands there.
+  // HR already has the application, so a failure here must not fail the request.
+  await sendMail({
+    from: env.careersTo,
+    to: [app.email],
+    reply_to: env.careersTo,
+    subject: `We received your application for ${app.role}`,
+    ...visitorNote([
+      `Hi ${firstName(app.name)},`,
+      `Thanks for applying for the ${app.role} role at CLYX Media. We have your details and resume.`,
+      'Our team reviews every application. If your profile is a fit, we will get in touch on this email address.',
+      'If you have anything to add, just reply to this email.',
+    ]),
+  }).catch((e) => console.error('candidate confirmation failed', e));
 }
 
 export type Enquiry = { name: string; email: string; company?: string; message: string };
@@ -82,33 +113,32 @@ export async function sendContactEmail(q: Enquiry) {
 </div>`;
   const text = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: env.contactFrom,
-      to: [env.contactTo],
-      reply_to: q.email,
-      subject: `Enquiry: ${q.name}${q.company ? ` (${q.company})` : ''}`,
-      html,
-      text,
-    }),
+  await sendMail({
+    from: env.contactFrom,
+    to: [env.contactTo],
+    reply_to: q.email,
+    subject: `Enquiry: ${q.name}${q.company ? ` (${q.company})` : ''}`,
+    html,
+    text,
   });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
+
+  // Acknowledgement to the visitor comes from the team inbox, so their reply lands there.
+  await sendMail({
+    from: env.contactTo,
+    to: [q.email],
+    reply_to: env.contactTo,
+    subject: 'We got your message — CLYX Media',
+    ...visitorNote([
+      `Hi ${firstName(q.name)},`,
+      'Thanks for reaching out to CLYX Media. Your message is with our founders and we will get back to you soon.',
+      'If you want to add context, such as your ad spend, goals or timelines, just reply to this email.',
+    ]),
+  }).catch((e) => console.error('enquiry acknowledgement failed', e));
 }
 
-// Newsletter: the subscriber gets a welcome email, the team gets the address. Nothing is stored,
+// Newsletter: the subscriber gets a welcome email from the team inbox, the team gets the address. Nothing is stored,
 // so the team inbox is the subscriber list.
 export async function sendNewsletterEmails(email: string) {
-  const send = async (payload: Record<string, unknown>) => {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: env.newsletterFrom, ...payload }),
-    });
-    if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  };
-
   const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#101010;max-width:560px">
   <h2 style="margin:0 0 16px;color:#013AA3">You're subscribed</h2>
   <p>Thanks for signing up to the CLYX Media newsletter.</p>
@@ -128,9 +158,11 @@ export async function sendNewsletterEmails(email: string) {
   ].join('\n');
 
   // The welcome email is what the visitor sees, so it decides success; the team copy is best effort.
-  await send({ to: [email], reply_to: env.contactTo, subject: "You're subscribed to the CLYX Media newsletter", html, text });
-  await send({
+  await sendMail({ from: env.contactTo, to: [email], reply_to: env.contactTo, subject: "You're subscribed to the CLYX Media newsletter", html, text });
+  await sendMail({
+    from: env.contactFrom,
     to: [env.contactTo],
+    reply_to: email,
     subject: `Newsletter signup: ${email}`,
     text: `${email} subscribed to the newsletter on clyxmedia.com.`,
   }).catch((e) => console.error('newsletter team notice failed', e));

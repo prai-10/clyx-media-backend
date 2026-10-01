@@ -33,8 +33,11 @@ services:
         sync: false
       - key: MAIL_FROM
         value: Clyx Careers <careers@clyxmedia.com>
+      # Applications go to this inbox, and candidates get their confirmation from it.
       - key: CAREERS_TO_EMAIL
-        value: HR Clyx <hr@clyxmedia.com>
-      # Contact page enquiry form.
+        value: CLYX Media Careers <hr@clyxmedia.com>
+      # Contact form, newsletter and "Email Founders": team inbox; visitors get their reply from it.
+      - key: CONTACT_FROM
+        value: Clyx Website <website@clyxmedia.com>
       - key: CONTACT_TO_EMAIL
-        value: Clyx <work@clyxmedia.com>
+        value: CLYX Media <work@clyxmedia.com>
