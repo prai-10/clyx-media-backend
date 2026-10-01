@@ -22,6 +22,8 @@ export const env = {
   // Contact page enquiries (same Resend key).
   contactFrom: process.env.CONTACT_FROM || 'Clyx Website <website@clyxmedia.com>',
   contactTo: process.env.CONTACT_TO_EMAIL || 'Clyx <work@clyxmedia.com>',
+  // Newsletter welcome email (same Resend key); signups are also sent to CONTACT_TO_EMAIL.
+  newsletterFrom: process.env.NEWSLETTER_FROM || 'CLYX Media <newsletter@clyxmedia.com>',
   corsOrigins: (process.env.CORS_ORIGIN ?? '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))

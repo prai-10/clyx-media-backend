@@ -67,6 +67,7 @@ export const collectionSchemas = {
     tag: text(60),
     date: text(30),
     readTime: text(30),
+    image: imageUrl,
     style: z.enum(['yellow', 'blue', 'soft']).default('yellow'),
     excerpt: text(600),
     body: text(30000),
@@ -94,6 +95,7 @@ export const collectionSchemas = {
     category: text(40),
     result: text(80),
     image: imageUrl,
+    detail: text(4000),
   }),
 } as const;
 

@@ -96,3 +96,42 @@ export async function sendContactEmail(q: Enquiry) {
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
 }
+
+// Newsletter: the subscriber gets a welcome email, the team gets the address. Nothing is stored,
+// so the team inbox is the subscriber list.
+export async function sendNewsletterEmails(email: string) {
+  const send = async (payload: Record<string, unknown>) => {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: env.newsletterFrom, ...payload }),
+    });
+    if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  };
+
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#101010;max-width:560px">
+  <h2 style="margin:0 0 16px;color:#013AA3">You're subscribed</h2>
+  <p>Thanks for signing up to the CLYX Media newsletter.</p>
+  <p>Once a month we'll send you actionable breakdowns of whitelisted creator campaigns, Meta ad teardowns and creative frameworks that scale. No fluff.</p>
+  <p>If you didn't sign up, just reply to this email and we'll take you off the list.</p>
+  <p style="margin-top:24px">— Team CLYX Media<br><a href="https://clyxmedia.com" style="color:#013AA3">clyxmedia.com</a></p>
+</div>`;
+  const text = [
+    "You're subscribed",
+    '',
+    'Thanks for signing up to the CLYX Media newsletter.',
+    "Once a month we'll send you actionable breakdowns of whitelisted creator campaigns, Meta ad teardowns and creative frameworks that scale. No fluff.",
+    "If you didn't sign up, just reply to this email and we'll take you off the list.",
+    '',
+    '— Team CLYX Media',
+    'https://clyxmedia.com',
+  ].join('\n');
+
+  // The welcome email is what the visitor sees, so it decides success; the team copy is best effort.
+  await send({ to: [email], reply_to: env.contactTo, subject: "You're subscribed to the CLYX Media newsletter", html, text });
+  await send({
+    to: [env.contactTo],
+    subject: `Newsletter signup: ${email}`,
+    text: `${email} subscribed to the newsletter on clyxmedia.com.`,
+  }).catch((e) => console.error('newsletter team notice failed', e));
+}

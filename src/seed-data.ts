@@ -47,12 +47,12 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     { quote: 'The landing page they built loaded in 0.4 seconds. Coupled with their whitelisted creator ads, our checkout conversion rate jumped from 1.8% to 4.8%.', name: 'Devang Patel', role: 'Co-Founder', brand: 'Volt Audio', metrics: '5.1x Peak ROAS · 0.4s Page Speed' },
   ],
   blog: [
-    { title: 'Why the best creator ads do not feel like ads', tag: 'Creator economy', date: '12.09.25', readTime: '4 min read', style: 'yellow' },
-    { title: 'The performance creative loop, explained', tag: 'Performance', date: '04.09.25', readTime: '6 min read', style: 'blue' },
-    { title: 'From scroll-stopping hook to scalable system', tag: 'Growth', date: '28.08.25', readTime: '5 min read', style: 'soft' },
-    { title: 'The page is part of the ad', tag: 'CRO', date: '19.08.25', readTime: '3 min read', style: 'yellow' },
-    { title: 'What to do when everything is working a little', tag: 'Strategy', date: '11.08.25', readTime: '5 min read', style: 'blue' },
-    { title: 'Briefing for a voice, not a demographic', tag: 'Creators', date: '02.08.25', readTime: '4 min read', style: 'soft' },
+    { title: 'Why the best creator ads do not feel like ads', tag: 'Creator economy', date: '12.09.25', readTime: '4 min read', style: 'yellow', image: u('photo-1611926653458-09294b3142bf') },
+    { title: 'The performance creative loop, explained', tag: 'Performance', date: '04.09.25', readTime: '6 min read', style: 'blue', image: u('photo-1551288049-bebda4e38f71') },
+    { title: 'From scroll-stopping hook to scalable system', tag: 'Growth', date: '28.08.25', readTime: '5 min read', style: 'soft', image: u('photo-1432888498266-38ffec3eaf0a') },
+    { title: 'The page is part of the ad', tag: 'CRO', date: '19.08.25', readTime: '3 min read', style: 'yellow', image: u('photo-1547658719-da2b51169166') },
+    { title: 'What to do when everything is working a little', tag: 'Strategy', date: '11.08.25', readTime: '5 min read', style: 'blue', image: u('photo-1552664730-d307ca884978') },
+    { title: 'Briefing for a voice, not a demographic', tag: 'Creators', date: '02.08.25', readTime: '4 min read', style: 'soft', image: u('photo-1478737270239-2f02b77fc618') },
   ],
   careers: [
     { title: 'Performance Marketing Lead', type: 'Full-time / Remote', detail: 'Own the decisions that turn winning creative into efficient growth.' },
