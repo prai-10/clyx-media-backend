@@ -161,7 +161,7 @@ const applicationSchema = z.object({
   name: z.string().trim().min(2, 'Please enter your full name.').max(120),
   email: z.string().trim().email('Please enter a valid email.').max(200),
   phone: z.string().trim().max(40).optional().default(''),
-  role: z.string().trim().min(2, 'Please choose a role.').max(120),
+  role: z.string().trim().min(2, 'Please choose a role.').max(160),
   note: z.string().trim().max(2000).optional().default(''),
   // Honeypot: hidden from people, filled in by bots.
   website: z.string().max(500).optional(),

@@ -72,11 +72,24 @@ export const collectionSchemas = {
     excerpt: text(600),
     body: text(30000),
   }),
+  // One open role on the Careers page. title/type/detail/status/department/experience/salary show on the card;
+  // everything else fills the "See description" popup. List fields hold one point per line.
   careers: z.object({
     title: required(160),
     type: text(80),
     detail: text(400),
+    status: z.enum(['Open', 'Hiring urgently', 'Closing soon']).default('Open'),
+    department: text(80),
+    experience: text(60),
+    salary: text(80),
+    openings: text(20),
+    applyBy: text(40),
     description: text(8000),
+    responsibilities: text(4000),
+    requirements: text(4000),
+    niceToHave: text(3000),
+    perks: text(3000),
+    skills: text(400),
   }),
   creators: z.object({
     name: text(120),

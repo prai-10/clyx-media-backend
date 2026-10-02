@@ -55,9 +55,9 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     { title: 'Briefing for a voice, not a demographic', tag: 'Creators', date: '02.08.25', readTime: '4 min read', style: 'soft', image: u('photo-1478737270239-2f02b77fc618') },
   ],
   careers: [
-    { title: 'Performance Marketing Lead', type: 'Full-time / Remote', detail: 'Own the decisions that turn winning creative into efficient growth.' },
-    { title: 'Creator Partnerships Manager', type: 'Full-time / Mumbai or Remote', detail: 'Build the relationships and systems behind our creator network.' },
-    { title: 'Conversion Designer', type: 'Contract / Remote', detail: 'Shape the pages, offers, and interactions that turn attention into action.' },
+    { title: 'Performance Marketing Lead', type: 'Full-time / Remote', detail: 'Own the decisions that turn winning creative into efficient growth.', department: 'Growth', experience: '4+ years' },
+    { title: 'Creator Partnerships Manager', type: 'Full-time / Mumbai or Remote', detail: 'Build the relationships and systems behind our creator network.', department: 'Creators', experience: '2+ years' },
+    { title: 'Conversion Designer', type: 'Contract / Remote', detail: 'Shape the pages, offers, and interactions that turn attention into action.', department: 'Design', experience: '3+ years' },
   ],
   creators: [
     'photo-1534528741775-53994a69daeb',
