@@ -32,12 +32,12 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
-        value: Clyx Careers <careers@clyxmedia.com>
+        value: Clyx Careers <hr@clyxmedia.com>
       # Applications go to this inbox, and candidates get their confirmation from it.
       - key: CAREERS_TO_EMAIL
         value: CLYX Media Careers <hr@clyxmedia.com>
       # Contact form, newsletter and "Email Founders": team inbox; visitors get their reply from it.
       - key: CONTACT_FROM
-        value: Clyx Website <website@clyxmedia.com>
+        value: Clyx Website <work@clyxmedia.com>
       - key: CONTACT_TO_EMAIL
         value: CLYX Media <work@clyxmedia.com>
