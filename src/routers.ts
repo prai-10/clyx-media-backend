@@ -6,6 +6,7 @@ import { blockEnum, collectionEnum } from './content-schema.js';
 import { createItem, deleteItem, getAdminContent, moveItem, saveBlock, updateItem } from './content.js';
 import { db } from './db/client.js';
 import { media } from './db/schema.js';
+import { listCourseOrders, listOrdersInput, updateCourseOrder, updateOrderInput } from './orders.js';
 import { removeImage } from './storage.js';
 import { adminProcedure, publicProcedure, router } from './trpc.js';
 
@@ -64,6 +65,10 @@ export const appRouter = router({
         await db.delete(media).where(eq(media.id, input.id));
         return { success: true };
       }),
+
+    // Course purchases from the checkout chat.
+    courseOrders: adminProcedure.input(listOrdersInput).query(({ input }) => listCourseOrders(input)),
+    updateCourseOrder: adminProcedure.input(updateOrderInput).mutation(({ input }) => updateCourseOrder(input)),
   }),
 });
 

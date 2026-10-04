@@ -8,7 +8,8 @@ import * as schema from './schema.js';
 export const pool = new pg.Pool({
   connectionString: env.databaseUrl,
   ssl: { rejectUnauthorized: false },
-  max: 5,
+  // Supabase's transaction pooler shares these between many requests; 10 keeps a burst of checkouts from queueing.
+  max: 10,
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 10_000,
   keepAlive: true,

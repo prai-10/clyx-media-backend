@@ -26,7 +26,7 @@ function emptyCollections<T>(): Record<CollectionName, T[]> {
 const SEEDED_PREFIX = '_seeded_';
 const isInternalBlock = (key: string) => key.startsWith('_');
 // Lists that did not exist at launch. Only these are ever filled by seedNewCollections.
-const LATE_COLLECTIONS: readonly CollectionName[] = ['portfolio'];
+const LATE_COLLECTIONS: readonly CollectionName[] = ['portfolio', 'courses'];
 
 async function loadRows() {
   const [blockRows, itemRows] = await Promise.all([

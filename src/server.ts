@@ -1,5 +1,6 @@
 import * as trpcExpress from '@trpc/server/adapters/express';
 import cors from 'cors';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
@@ -11,6 +12,7 @@ import { db } from './db/client.js';
 import { media } from './db/schema.js';
 import { env } from './env.js';
 import { mailerReady, MAX_RESUME_BYTES, sendApplicationEmail, sendContactEmail, sendNewsletterEmails, sniffResumeType } from './mailer.js';
+import { createCourseOrder, DuplicatePaymentError, orderInputSchema } from './orders.js';
 import { appRouter } from './routers.js';
 import { ensureBucket, MAX_UPLOAD_BYTES, removeImage, sniffImageType, uploadImage } from './storage.js';
 import { createContext } from './trpc.js';
@@ -270,13 +272,43 @@ app.post('/api/public/subscribe', subscribeLimiter, express.json({ limit: '2kb' 
   }
 });
 
+// Course checkout chat: the buyer paid by UPI QR and sends the UTR / transaction ID. Stored for the team, who check
+// the payment in their UPI app and share the class link on WhatsApp. One small INSERT per order.
+// The limit is per IP and generous, because a whole college or office can share one IP.
+const orderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts from this network. Please wait a few minutes or message us on WhatsApp.' },
+});
+
+app.post('/api/public/course-orders', orderLimiter, express.json({ limit: '4kb' }), async (req, res) => {
+  const parsed = orderInputSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Please check your details.' });
+  // Pretend success so bots learn nothing.
+  if (parsed.data.website) return res.json({ ok: true, ref: parsed.data.ref || 'CLX-000000' });
+
+  try {
+    const { ref } = await createCourseOrder(parsed.data);
+    res.json({ ok: true, ref });
+  } catch (e) {
+    if (e instanceof DuplicatePaymentError) return res.status(409).json({ error: e.message });
+    console.error('course order failed', e);
+    res.status(500).json({ error: 'Could not save your order right now.' });
+  }
+});
+
 ensureBucket().catch((e) => console.error('Storage bucket check failed:', e.message));
 
 app.listen(env.port, () => {
   console.log(`Backend server running on port ${env.port}`);
   // Fill lists added since launch, then load content and open the database connection now,
   // so the first visitor after a (re)start is not the one who waits.
-  seedNewCollections()
+  // Apply new migrations (e.g. the course_orders table) before seeding, so a plain redeploy is enough.
+  migrate(db, { migrationsFolder: './drizzle' })
+    .catch((e) => console.error('Database migration failed:', e.message))
+    .then(() => seedNewCollections())
     .then((seeded) => seeded.length && console.log(`Seeded new lists: ${seeded.join(', ')}`))
     .catch((e) => console.error('Seeding new lists failed:', e.message))
     .finally(() => getPublicPayload().catch((e) => console.error('Content warm-up failed:', e.message)));

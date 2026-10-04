@@ -103,6 +103,28 @@ export const collectionSchemas = {
     label: text(120),
     detail: text(200),
   }),
+  // One course on the Courses page. The card shows title/tagline/price/image/badge/duration/format/level;
+  // "See more details" adds schedule, highlights, includes and description. List fields hold one point per line.
+  courses: z.object({
+    title: required(160),
+    tagline: text(300),
+    price: z
+      .string()
+      .trim()
+      .max(12)
+      .default('')
+      .refine((v) => v === '' || /^\d{1,7}(\.\d{1,2})?$/.test(v), 'Price must be a number such as 29 or 499.50'),
+    originalPrice: text(12),
+    image: imageUrl,
+    badge: text(40),
+    duration: text(60),
+    format: text(80),
+    level: text(40),
+    schedule: text(160),
+    highlights: text(3000),
+    includes: text(2000),
+    description: text(8000),
+  }),
   portfolio: z.object({
     title: required(120),
     category: text(40),
@@ -148,7 +170,7 @@ const pageFields = z
  * The website pages whose copy the admin panel edits, stored as blocks named `page_<name>`.
  * "global" is the header, footer and other parts shared by every page.
  */
-export const pageNames = ['global', 'home', 'about', 'services', 'portfolio', 'caseStudies', 'creators', 'blog', 'careers', 'contact'] as const;
+export const pageNames = ['global', 'home', 'about', 'services', 'portfolio', 'caseStudies', 'creators', 'blog', 'careers', 'courses', 'contact'] as const;
 
 /** Singleton blocks (one record each). */
 export const blockSchemas = {
