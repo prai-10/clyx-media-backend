@@ -287,11 +287,12 @@ app.post('/api/public/course-orders', orderLimiter, express.json({ limit: '4kb' 
   const parsed = orderInputSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Please check your details.' });
   // Pretend success so bots learn nothing.
-  if (parsed.data.website) return res.json({ ok: true, ref: parsed.data.ref || 'CLX-000000' });
+  if (parsed.data.website) return res.json({ ok: true });
 
   try {
-    const { ref } = await createCourseOrder(parsed.data);
-    res.json({ ok: true, ref });
+    // The order ID stays in the database (and the admin panel); the buyer never sees it.
+    await createCourseOrder(parsed.data);
+    res.json({ ok: true });
   } catch (e) {
     if (e instanceof DuplicatePaymentError) return res.status(409).json({ error: e.message });
     console.error('course order failed', e);

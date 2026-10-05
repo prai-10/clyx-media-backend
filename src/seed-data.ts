@@ -72,7 +72,7 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     'photo-1519085360753-af0119f7cbe7',
     'photo-1506794778202-cad84cf45f1d',
     'photo-1492562080023-ab3db95bfbce',
-  ].map((id, i) => ({ name: `Creator ${String(i + 1).padStart(2, '0')}`, handle: '', platform: '', reach: '', image: u(id, 800) })),
+  ].map((id) => ({ image: u(id, 800) })),
   courses: [
     {
       title: 'Creator Ads Masterclass',

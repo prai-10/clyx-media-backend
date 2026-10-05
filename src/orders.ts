@@ -10,15 +10,12 @@ export type OrderStatus = (typeof orderStatuses)[number];
 
 // No 0/O or 1/I, so an order ID read out over WhatsApp is never misheard.
 const REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const REF_PATTERN = /^CLX-[A-Z0-9]{6}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const newRef = () => `CLX-${Array.from({ length: 6 }, () => REF_ALPHABET[randomInt(REF_ALPHABET.length)]).join('')}`;
 
-/** What the checkout chat sends once the buyer has paid. */
+/** What the checkout chat sends once the buyer has paid. The order ID is made here and never shown to the buyer. */
 export const orderInputSchema = z.object({
-  // Made by the chat before payment so it can go in the UPI note; replaced here if it is malformed or taken.
-  ref: z.string().trim().max(16).optional().default(''),
   name: z.string().trim().min(2, 'Please enter your name.').max(120),
   phone: z
     .string()
@@ -28,12 +25,12 @@ export const orderInputSchema = z.object({
   courseId: z.string().trim().max(64).optional().default(''),
   courseTitle: z.string().trim().min(1, 'Please pick a course.').max(200),
   amount: z.coerce.number().positive('Invalid amount.').max(10_000_000),
-  // UTR / UPI transaction ID: letters and digits only, spaces dropped, upper-cased.
+  // UTR / UPI transaction ID (UPI Ref No): every UPI app shows it as exactly 12 digits. Spaces and dashes are dropped.
   paymentRef: z
     .string()
     .trim()
-    .transform((v) => v.replace(/\s+/g, '').toUpperCase())
-    .pipe(z.string().regex(/^[A-Z0-9]{6,40}$/, 'Please enter the UTR / transaction ID exactly as your UPI app shows it.')),
+    .transform((v) => v.replace(/[\s-]+/g, ''))
+    .pipe(z.string().regex(/^\d{12}$/, 'The UTR / UPI transaction ID must be exactly 12 digits.')),
   // Honeypot: hidden from people, filled in by bots.
   website: z.string().max(500).optional(),
 });
@@ -61,11 +58,12 @@ async function savedCourse(courseId: string): Promise<{ title: string; price: nu
 /**
  * Stores one order with a single INSERT. The unique ref / paymentRef constraints settle races between simultaneous
  * buyers in the database itself, so this needs no locks and stays cheap under a burst of checkouts.
- * Re-sending the same order (double tap, retry after a timeout) returns the saved one instead of failing.
+ * Re-sending the same order (double tap, retry after a timeout: same UTR, name and phone) returns the saved one
+ * instead of failing; the same UTR from anyone else is refused.
  */
 export async function createCourseOrder(input: OrderInput): Promise<{ ref: string; duplicate: boolean }> {
   const course = await savedCourse(input.courseId);
-  let ref = REF_PATTERN.test(input.ref) ? input.ref : newRef();
+  let ref = newRef();
   for (let attempt = 0; attempt < 4; attempt++) {
     const [row] = await db
       .insert(courseOrders)
@@ -83,12 +81,12 @@ export async function createCourseOrder(input: OrderInput): Promise<{ ref: strin
     if (row) return { ref: row.ref, duplicate: false };
 
     const [existing] = await db
-      .select({ ref: courseOrders.ref })
+      .select({ ref: courseOrders.ref, name: courseOrders.name, phone: courseOrders.phone })
       .from(courseOrders)
       .where(eq(courseOrders.paymentRef, input.paymentRef))
       .limit(1);
     if (existing) {
-      if (existing.ref === ref) return { ref, duplicate: true };
+      if (existing.name === input.name && existing.phone === input.phone) return { ref: existing.ref, duplicate: true };
       throw new DuplicatePaymentError('This UTR / transaction ID has already been submitted.');
     }
     ref = newRef(); // the order ID was taken by someone else

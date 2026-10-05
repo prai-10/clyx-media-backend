@@ -92,10 +92,6 @@ export const collectionSchemas = {
     skills: text(400),
   }),
   creators: z.object({
-    name: text(120),
-    handle: text(80),
-    platform: text(40),
-    reach: text(30),
     image: imageUrl,
   }),
   stats: z.object({
