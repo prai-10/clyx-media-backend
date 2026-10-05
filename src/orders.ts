@@ -12,9 +12,15 @@ export type OrderStatus = (typeof orderStatuses)[number];
 const REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const REF_PATTERN = new RegExp(`^CLX-[${REF_ALPHABET}]{6}$`);
+
 const newRef = () => `CLX-${Array.from({ length: 6 }, () => REF_ALPHABET[randomInt(REF_ALPHABET.length)]).join('')}`;
 
-/** What the checkout chat sends once the buyer has paid. The order ID is made here and never shown to the buyer. */
+/**
+ * What the checkout chat sends once the buyer has paid. The chat makes the order ID before showing the UPI QR and
+ * puts it in the payment note, so the team can match the payment in the UPI app to this order. It is never shown on
+ * the website. Without one (an older page), the order ID is made here.
+ */
 export const orderInputSchema = z.object({
   name: z.string().trim().min(2, 'Please enter your name.').max(120),
   phone: z
@@ -31,6 +37,13 @@ export const orderInputSchema = z.object({
     .trim()
     .transform((v) => v.replace(/[\s-]+/g, ''))
     .pipe(z.string().regex(/^\d{12}$/, 'The UTR / UPI transaction ID must be exactly 12 digits.')),
+  ref: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(REF_PATTERN, 'Invalid order ID.')
+    .optional()
+    .catch(undefined),
   // Honeypot: hidden from people, filled in by bots.
   website: z.string().max(500).optional(),
 });
@@ -63,7 +76,8 @@ async function savedCourse(courseId: string): Promise<{ title: string; price: nu
  */
 export async function createCourseOrder(input: OrderInput): Promise<{ ref: string; duplicate: boolean }> {
   const course = await savedCourse(input.courseId);
-  let ref = newRef();
+  // The chat's own order ID (already in the UPI payment note) is used when it is free; a clash is near impossible.
+  let ref = input.ref ?? newRef();
   for (let attempt = 0; attempt < 4; attempt++) {
     const [row] = await db
       .insert(courseOrders)
@@ -89,6 +103,7 @@ export async function createCourseOrder(input: OrderInput): Promise<{ ref: strin
       if (existing.name === input.name && existing.phone === input.phone) return { ref: existing.ref, duplicate: true };
       throw new DuplicatePaymentError('This UTR / transaction ID has already been submitted.');
     }
+    if (attempt === 0 && input.ref) console.warn(`course order: chat order ID ${input.ref} was taken, saving under a new one`);
     ref = newRef(); // the order ID was taken by someone else
   }
   throw new Error('Could not allocate an order ID');
