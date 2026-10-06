@@ -14,7 +14,7 @@ import { env } from './env.js';
 import { mailerReady, MAX_RESUME_BYTES, sendApplicationEmail, sendContactEmail, sendNewsletterEmails, sniffResumeType } from './mailer.js';
 import { createCourseOrder, DuplicatePaymentError, orderInputSchema } from './orders.js';
 import { appRouter } from './routers.js';
-import { ensureBucket, MAX_UPLOAD_BYTES, removeImage, sniffImageType, uploadImage } from './storage.js';
+import { ensureBucket, ensureVideoBucket, MAX_UPLOAD_BYTES, MAX_VIDEO_BYTES, removeImage, signVideoUpload, sniffImageType, uploadImage, VIDEO_TYPES } from './storage.js';
 import { createContext } from './trpc.js';
 
 const app = express();
@@ -143,6 +143,32 @@ app.post('/api/admin/upload', async (req, res) => {
       res.status(500).json({ error: 'Could not save the image. Please try again.' });
     }
   });
+});
+
+// Student videos: hands the admin a one-time link to upload the file straight to storage (the bucket enforces type and size).
+let videoBucketReady: Promise<unknown> | undefined;
+const videoUploadSchema = z.object({ type: z.string(), size: z.number().int().positive() });
+
+app.post('/api/admin/upload-video', express.json({ limit: '1kb' }), async (req, res) => {
+  if (!(await isAdminRequest(req.headers.authorization))) {
+    return res.status(401).json({ error: 'Please sign in again.' });
+  }
+  const parsed = videoUploadSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid upload request.' });
+  const { type, size } = parsed.data;
+  if (!VIDEO_TYPES[type]) return res.status(400).json({ error: 'Only MP4, WebM or MOV videos are allowed.' });
+  if (size > MAX_VIDEO_BYTES) return res.status(400).json({ error: `Video is larger than ${MAX_VIDEO_BYTES / 1024 / 1024} MB.` });
+  try {
+    videoBucketReady ??= ensureVideoBucket().catch((e) => {
+      videoBucketReady = undefined;
+      throw e;
+    });
+    await videoBucketReady;
+    res.json(await signVideoUpload(type));
+  } catch (e) {
+    console.error('video upload sign failed', e);
+    res.status(500).json({ error: 'Could not start the upload. Please try again.' });
+  }
 });
 
 // Careers apply form: the resume is emailed straight to HR and not stored anywhere.

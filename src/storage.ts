@@ -53,6 +53,39 @@ export async function uploadImage(buf: Buffer, mimeType: string) {
   return { storagePath, url: data.publicUrl };
 }
 
+// Student videos live in their own public bucket: bigger files and video types only.
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const VIDEO_TYPES: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+};
+const videoBucket = () => `${env.supabaseBucket}-videos`;
+
+export async function ensureVideoBucket() {
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Could not list storage buckets: ${error.message}`);
+  if (buckets.some((b) => b.name === videoBucket())) return 'exists';
+  const { error: createError } = await supabase.storage.createBucket(videoBucket(), {
+    public: true,
+    fileSizeLimit: MAX_VIDEO_BYTES,
+    allowedMimeTypes: Object.keys(VIDEO_TYPES),
+  });
+  if (createError) throw new Error(`Could not create bucket "${videoBucket()}": ${createError.message}`);
+  return 'created';
+}
+
+/** A one-time upload link, so the browser sends the video straight to storage instead of through this server. */
+export async function signVideoUpload(mimeType: string) {
+  const ext = VIDEO_TYPES[mimeType];
+  const month = new Date().toISOString().slice(0, 7);
+  const storagePath = `videos/${month}/${randomUUID()}.${ext}`;
+  const bucket = supabase.storage.from(videoBucket());
+  const { data, error } = await bucket.createSignedUploadUrl(storagePath);
+  if (error) throw new Error(`Could not prepare the upload: ${error.message}`);
+  return { uploadUrl: data.signedUrl, url: bucket.getPublicUrl(storagePath).data.publicUrl };
+}
+
 export async function removeImage(storagePath: string) {
   const { error } = await supabase.storage.from(env.supabaseBucket).remove([storagePath]);
   if (error) throw new Error(`Could not delete file: ${error.message}`);
