@@ -1,4 +1,5 @@
 import type { BlockName, CollectionName } from './content-schema.js';
+import { portfolioAdditions } from './portfolio-additions.js';
 
 /**
  * Initial content, copied from what the live site showed before the CMS existed,
@@ -324,5 +325,6 @@ export const seedCollections: Record<CollectionName, Record<string, unknown>[]> 
     { title: 'Morning Stack', category: 'Food', result: '2.6x ROAS', image: u('photo-1567620905732-2d1ec7ab7445') },
     { title: 'Byte Wave', category: 'Tech', result: '3.2x ROAS', image: u('photo-1531297484001-80022131f5a1') },
     { title: 'Shade Club', category: 'D2C', result: '+81% CTR', image: u('photo-1572635196237-14b3f281503f') },
+    ...portfolioAdditions,
   ],
 };

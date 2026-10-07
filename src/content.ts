@@ -13,6 +13,7 @@ import {
   type BlockName,
   type CollectionName,
 } from './content-schema.js';
+import { portfolioAdditions } from './portfolio-additions.js';
 import { seedBlocks, seedCollections } from './seed-data.js';
 
 type Fields = Record<string, unknown>;
@@ -31,6 +32,12 @@ const LATE_COLLECTIONS: readonly CollectionName[] = ['portfolio', 'courses'];
 // replaced with its current seed content, once; admin edits made after that are kept. Bump the version to redo it.
 const RESEEDS: Partial<Record<CollectionName, string>> = { caseStudies: 'v2' };
 const RESEEDED_PREFIX = '_reseeded_';
+// Items added to a live list after launch. On the first start after a version appears here, each item whose title
+// is not in the list yet is added at the end, once; nothing already there is changed. Bump the version to redo it.
+const APPENDS: Partial<Record<CollectionName, { version: string; items: Fields[] }>> = {
+  portfolio: { version: 'v1', items: portfolioAdditions },
+};
+const APPENDED_PREFIX = '_appended_';
 
 async function loadRows() {
   const [blockRows, itemRows] = await Promise.all([
@@ -312,7 +319,7 @@ export async function seedIfEmpty({ force = false } = {}) {
  */
 export async function seedNewCollections() {
   const done = new Set(
-    (await db.select({ key: siteBlocks.key }).from(siteBlocks)).map((row) => row.key).filter((key) => key.startsWith(SEEDED_PREFIX) || key.startsWith(RESEEDED_PREFIX)),
+    (await db.select({ key: siteBlocks.key }).from(siteBlocks)).map((row) => row.key).filter((key) => key.startsWith(SEEDED_PREFIX) || key.startsWith(RESEEDED_PREFIX) || key.startsWith(APPENDED_PREFIX)),
   );
   const seeded: CollectionName[] = [];
   for (const collection of LATE_COLLECTIONS) {
@@ -349,6 +356,26 @@ export async function seedNewCollections() {
       await tx.insert(siteBlocks).values({ key: marker, value: {} }).onConflictDoNothing();
     });
     seeded.push(collection);
+  }
+  for (const [collection, { version, items }] of Object.entries(APPENDS) as [CollectionName, { version: string; items: Fields[] }][]) {
+    const marker = `${APPENDED_PREFIX}${collection}_${version}`;
+    if (done.has(marker)) continue;
+    const added = await db.transaction(async (tx) => {
+      const existing = await tx
+        .select({ data: contentItems.data, sortOrder: contentItems.sortOrder })
+        .from(contentItems)
+        .where(eq(contentItems.collection, collection));
+      const titleKey = (fields: Fields) => String(fields.title ?? '').trim().toLowerCase();
+      const titles = new Set(existing.map((row) => titleKey(row.data as Fields)));
+      const nextOrder = existing.reduce((max, row) => Math.max(max, row.sortOrder + 1), 0);
+      const rows = items
+        .filter((fields) => !titles.has(titleKey(fields)))
+        .map((fields, i) => ({ collection, data: parseFields(collectionSchemas[collection], fields), sortOrder: nextOrder + i }));
+      if (rows.length) await tx.insert(contentItems).values(rows);
+      await tx.insert(siteBlocks).values({ key: marker, value: {} }).onConflictDoNothing();
+      return rows.length;
+    });
+    if (added) seeded.push(collection);
   }
   if (seeded.length) invalidatePublicCache();
   return seeded;
