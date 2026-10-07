@@ -27,6 +27,10 @@ const SEEDED_PREFIX = '_seeded_';
 const isInternalBlock = (key: string) => key.startsWith('_');
 // Lists that did not exist at launch. Only these are ever filled by seedNewCollections.
 const LATE_COLLECTIONS: readonly CollectionName[] = ['portfolio', 'courses'];
+// Lists whose launch content was rewritten later. On the first start after a version appears here, the list is
+// replaced with its current seed content, once; admin edits made after that are kept. Bump the version to redo it.
+const RESEEDS: Partial<Record<CollectionName, string>> = { caseStudies: 'v2' };
+const RESEEDED_PREFIX = '_reseeded_';
 
 async function loadRows() {
   const [blockRows, itemRows] = await Promise.all([
@@ -308,7 +312,7 @@ export async function seedIfEmpty({ force = false } = {}) {
  */
 export async function seedNewCollections() {
   const done = new Set(
-    (await db.select({ key: siteBlocks.key }).from(siteBlocks)).map((row) => row.key).filter((key) => key.startsWith(SEEDED_PREFIX)),
+    (await db.select({ key: siteBlocks.key }).from(siteBlocks)).map((row) => row.key).filter((key) => key.startsWith(SEEDED_PREFIX) || key.startsWith(RESEEDED_PREFIX)),
   );
   const seeded: CollectionName[] = [];
   for (const collection of LATE_COLLECTIONS) {
@@ -330,6 +334,21 @@ export async function seedNewCollections() {
       }
       await tx.insert(siteBlocks).values({ key: marker, value: {} }).onConflictDoNothing();
     });
+  }
+  for (const [collection, version] of Object.entries(RESEEDS) as [CollectionName, string][]) {
+    const marker = `${RESEEDED_PREFIX}${collection}_${version}`;
+    if (done.has(marker)) continue;
+    await db.transaction(async (tx) => {
+      await tx.delete(contentItems).where(eq(contentItems.collection, collection));
+      const rows = seedCollections[collection].map((fields, sortOrder) => ({
+        collection,
+        data: parseFields(collectionSchemas[collection], fields),
+        sortOrder,
+      }));
+      if (rows.length) await tx.insert(contentItems).values(rows);
+      await tx.insert(siteBlocks).values({ key: marker, value: {} }).onConflictDoNothing();
+    });
+    seeded.push(collection);
   }
   if (seeded.length) invalidatePublicCache();
   return seeded;

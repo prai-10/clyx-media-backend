@@ -39,14 +39,45 @@ export const collectionSchemas = {
     ctaText: text(60),
     ctaUrl: linkUrl,
   }),
+  // One case study: the card fields, then the write-up on its own page (/case-studies/<brand>).
+  // List fields hold one entry per line; "A | B | C" lines are split into columns on the page.
   caseStudies: z.object({
     brand: required(120),
     category: text(120),
     headline: text(200),
     result: text(80),
-    detail: text(800),
+    detail: text(1500),
+    highlights: text(1500),
     image: imageUrl,
     accent: hexColor,
+    industry: text(160),
+    market: text(160),
+    duration: text(160),
+    channels: text(240),
+    adSpend: text(160),
+    services: text(600),
+    requirement: text(3000),
+    goals: text(2000),
+    challenges: text(4000),
+    approach: text(4000),
+    execution: text(3000),
+    deliverables: text(2000),
+    // "image URL | caption" per line.
+    work: text(6000).superRefine((value, ctx) => {
+      for (const [i, line] of value.split('\n').entries()) {
+        const url = line.split('|')[0].trim();
+        if (!url) continue;
+        const result = imageUrl.safeParse(url);
+        if (!result.success) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Photo ${i + 1}: ${result.error.issues[0].message}` });
+      }
+    }),
+    metrics: text(1500),
+    comparison: text(1500),
+    resultsSummary: text(2000),
+    quote: text(1000),
+    quoteName: text(120),
+    quoteRole: text(120),
+    learnings: text(3000),
   }),
   team: z.object({
     name: required(120),
