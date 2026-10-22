@@ -240,16 +240,17 @@ export async function createItem(collection: CollectionName, input: unknown, pos
 }
 
 export async function updateItem(id: string, patch: { data?: unknown; isHidden?: boolean }) {
-  const [existing] = await db.select().from(contentItems).where(eq(contentItems.id, id));
-  if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item not found.' });
-
   const set: Partial<typeof contentItems.$inferInsert> = { updatedAt: new Date() };
   if (patch.data !== undefined) {
+    // Only new fields need the card's list (to validate them); a show/hide toggle skips this extra read.
+    const [existing] = await db.select({ collection: contentItems.collection }).from(contentItems).where(eq(contentItems.id, id));
+    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item not found.' });
     set.data = parseFields(collectionSchemas[existing.collection as CollectionName], patch.data);
   }
   if (patch.isHidden !== undefined) set.isHidden = patch.isHidden;
 
   const [row] = await db.update(contentItems).set(set).where(eq(contentItems.id, id)).returning();
+  if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item not found.' });
   invalidatePublicCache();
   return row;
 }
@@ -263,11 +264,11 @@ export async function deleteItem(id: string) {
 /** Swaps an item with its neighbour and renumbers the list so order stays gap-free. */
 export async function moveItem(id: string, direction: 'up' | 'down') {
   await db.transaction(async (tx) => {
-    const [item] = await tx.select().from(contentItems).where(eq(contentItems.id, id));
+    const [item] = await tx.select({ collection: contentItems.collection }).from(contentItems).where(eq(contentItems.id, id));
     if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item not found.' });
 
     const siblings = await tx
-      .select({ id: contentItems.id })
+      .select({ id: contentItems.id, sortOrder: contentItems.sortOrder })
       .from(contentItems)
       .where(eq(contentItems.collection, item.collection))
       .orderBy(asc(contentItems.sortOrder), asc(contentItems.createdAt));
@@ -277,7 +278,10 @@ export async function moveItem(id: string, direction: 'up' | 'down') {
     if (to < 0 || to >= siblings.length) return;
 
     [siblings[from], siblings[to]] = [siblings[to], siblings[from]];
+    // Same gap-free numbering as before, but rows already at their number are not written again
+    // (usually just the two swapped cards instead of the whole list).
     for (const [index, sibling] of siblings.entries()) {
+      if (sibling.sortOrder === index) continue;
       await tx.update(contentItems).set({ sortOrder: index }).where(eq(contentItems.id, sibling.id));
     }
   });
